@@ -46,6 +46,78 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def compute_conv_flops_par(model: torch.nn.Module, cuda=False, ratio=1.0) -> float:
+    """
+    compute the FLOPs for CIFAR models
+    NOTE: ONLY compute the FLOPs for Convolution layers and Linear layers
+    """
+
+    list_conv = []
+    list_aggr = []
+
+    def conv_hook(self, input, output):
+        batch_size, input_channels, input_height, input_width = input[0].size()
+        output_channels, output_height, output_width = output[0].size()
+
+        if self.groups == 1:
+            kernel_ops = self.kernel_size[0] * self.kernel_size[1] * (self.in_channels * ratio)
+        else:
+            kernel_ops = self.kernel_size[0] * self.kernel_size[1]
+
+        flops = kernel_ops * (output_channels * ratio) * output_height * output_width
+
+        if hasattr(self, 'flops_multiplier'):
+            flops *= self.flops_multiplier
+
+        list_conv.append(flops)
+        if hasattr(self, '__name__') and self.__name__ == 'aggr':
+            list_aggr.append(flops)
+
+    list_linear = []
+
+    def linear_hook(self, input, output):
+        weight_ops = self.weight.nelement()
+
+        flops = weight_ops * ratio
+
+        if hasattr(self, 'flops_multiplier'):
+            flops *= self.flops_multiplier
+
+        list_linear.append(flops)
+
+    def add_hooks(net, hook_handles: list):
+        """
+        apply FLOPs handles to conv layers recursively
+        """
+        children = list(net.children())
+        if not children:
+            if isinstance(net, torch.nn.Conv2d):
+                hook_handles.append(net.register_forward_hook(conv_hook))
+            if isinstance(net, torch.nn.Linear):
+                hook_handles.append(net.register_forward_hook(linear_hook))
+            return
+        for c in children:
+            add_hooks(c, hook_handles)
+
+    handles = []
+    add_hooks(model, handles)
+    demo_input = torch.rand(2, 3, 224, 224)
+    if cuda:
+        demo_input = demo_input.cuda()
+        model = model.cuda()
+    model(demo_input)
+
+    total_flops = sum(list_conv) + sum(list_linear)
+    aggr_ratio = sum(list_aggr) / total_flops
+
+    # clear handles
+    for h in handles:
+        h.remove()
+    if aggr_ratio >0:
+        return total_flops, aggr_ratio
+    else:
+        return total_flops
+
 def get_args_parser():
     parser = argparse.ArgumentParser('ConvNeXt training and evaluation script for image classification', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int,
@@ -283,6 +355,8 @@ def main(args):
         layer_scale_init_value=args.layer_scale_init_value,
         head_init_scale=args.head_init_scale,
         )
+    compute_conv_flops_par(model)
+    exit(0)
 
     if args.finetune:
         if args.finetune.startswith('https'):

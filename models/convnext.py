@@ -65,7 +65,7 @@ class ConvNeXt(nn.Module):
     """
     def __init__(self, in_chans=3, num_classes=1000, 
                  depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0., 
-                 layer_scale_init_value=1e-6, head_init_scale=1.,
+                 layer_scale_init_value=1e-6, head_init_scale=1., bridge_type=-1
                  ):
         super().__init__()
 
@@ -100,15 +100,27 @@ class ConvNeXt(nn.Module):
         self.head.weight.data.mul_(head_init_scale)
         self.head.bias.data.mul_(head_init_scale)
 
+        self.aggr = None
+        if bridge_type>=0:
+            aggr_layers = []
+            aggr_layers.append(nn.Conv2d((96, 192, 384, 768), 768, kernel_size=1, stride=1, padding=0, bias=False))
+            aggr_layers.append(nn.BatchNorm2d(2048))
+            aggr_layers.append(nn.ReLU())
+            self.aggr = nn.Sequential(*aggr_layers)
+            aggr_layers[0].__name__ = 'aggr'
+
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
             trunc_normal_(m.weight, std=.02)
             nn.init.constant_(m.bias, 0)
 
     def forward_features(self, x):
+        out_list = []
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
+            # out_list.append()
+            print(x.size())
         return self.norm(x.mean([-2, -1])) # global average pooling, (N, C, H, W) -> (N, C)
 
     def forward(self, x):
