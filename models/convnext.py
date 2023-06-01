@@ -116,10 +116,11 @@ class ConvNeXt(nn.Module):
 
     def forward_features(self, x):
         out_list = []
+        ds_list = [8,4,2,1]
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-            out_list.append(F.avg_pool2d(x, 8))
+            out_list.append(F.avg_pool2d(x, ds_list[i]))
         if self.aggr is not None:
             # aggregate layer
             out_list = torch.cat(out_list,1)
