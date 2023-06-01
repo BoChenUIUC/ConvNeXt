@@ -355,7 +355,18 @@ def main(args):
         layer_scale_init_value=args.layer_scale_init_value,
         head_init_scale=args.head_init_scale,
         )
-    compute_conv_flops_par(model)
+    BASEFLOPS = compute_conv_flops_par(model, cuda=True)
+    N = 64
+    for i in range(0,N):
+        flops_ratio = compute_conv_flops_par(model, cuda=True, ratio=1-1.0*i/N)/BASEFLOPS
+        if flops_ratio<0.5:break
+    print(i,flops_ratio)
+    model.decentralize()
+    for i in range(0,N):
+        flops,aggr_ratio = compute_conv_flops_par(model, cuda=True, ratio=1-1.0*i/N)
+        flops_ratio = flops/BASEFLOPS
+        if flops_ratio<0.5:break
+    print(i,flops_ratio, aggr_ratio)
     exit(0)
 
     if args.finetune:

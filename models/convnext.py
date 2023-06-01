@@ -65,7 +65,7 @@ class ConvNeXt(nn.Module):
     """
     def __init__(self, in_chans=3, num_classes=1000, 
                  depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0., 
-                 layer_scale_init_value=1e-6, head_init_scale=1., bridge_type=-1
+                 layer_scale_init_value=1e-6, head_init_scale=1., 
                  ):
         super().__init__()
 
@@ -99,15 +99,15 @@ class ConvNeXt(nn.Module):
         self.apply(self._init_weights)
         self.head.weight.data.mul_(head_init_scale)
         self.head.bias.data.mul_(head_init_scale)
-
         self.aggr = None
-        if bridge_type>=0:
-            aggr_layers = []
-            aggr_layers.append(nn.Conv2d((96, 192, 384, 768), 768, kernel_size=1, stride=1, padding=0, bias=False))
-            aggr_layers.append(nn.BatchNorm2d(2048))
-            aggr_layers.append(nn.ReLU())
-            self.aggr = nn.Sequential(*aggr_layers)
-            aggr_layers[0].__name__ = 'aggr'
+
+    def decentralize(self):
+        aggr_layers = []
+        aggr_layers.append(nn.Conv2d((128, 256, 512, 1024), 1024, kernel_size=1, stride=1, padding=0, bias=False))
+        aggr_layers.append(nn.BatchNorm2d(1024))
+        aggr_layers.append(nn.ReLU())
+        self.aggr = nn.Sequential(*aggr_layers)
+        aggr_layers[0].__name__ = 'aggr'
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
@@ -119,8 +119,11 @@ class ConvNeXt(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-            # out_list.append()
-            print(x.size())
+            out_list.append(F.avg_pool2d(x, 8))
+        if self.aggr is not None:
+            # aggregate layer
+            out_list = torch.cat(out_list,1)
+            x = self.aggr(out_list)
         return self.norm(x.mean([-2, -1])) # global average pooling, (N, C, H, W) -> (N, C)
 
     def forward(self, x):
