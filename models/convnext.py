@@ -103,7 +103,7 @@ class ConvNeXt(nn.Module):
 
     def decentralize(self):
         aggr_layers = []
-        aggr_layers.append(nn.Conv2d((128, 256, 512, 1024), 1024, kernel_size=1, stride=1, padding=0, bias=False))
+        aggr_layers.append(nn.Conv2d(128+ 256+ 512+ 1024, 1024, kernel_size=1, stride=1, padding=0, bias=False))
         aggr_layers.append(nn.BatchNorm2d(1024))
         aggr_layers.append(nn.ReLU())
         self.aggr = nn.Sequential(*aggr_layers)
