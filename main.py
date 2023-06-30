@@ -355,6 +355,7 @@ def main(args):
         layer_scale_init_value=args.layer_scale_init_value,
         head_init_scale=args.head_init_scale,
         )
+    print(model)
     BASEFLOPS = compute_conv_flops_par(model, cuda=True)
     N = 64
     for i in range(0,N):
